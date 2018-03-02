@@ -6,10 +6,14 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.support.annotation.Nullable;
+import android.support.v4.view.PagerAdapter;
+import android.support.v4.view.ViewPager;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -28,9 +32,10 @@ public class ViewPagerIndicator extends View {
     private int[] mTextWidths;//每个标题的宽度存储
     private Context mContext;
     private int mTextY;//文字的y坐标
-    private float mOffset;//偏移量，根据偏移量改变选中文字的变色
     private int mHeight;
-    private int mCurrentPosition = 0;
+    private float mCurrentLeft = 0;//显示红色区域的起始位置
+    private float mCurrentRight = 0;//当前选中的position
+    private int mCurrentPosition;//当前选中条目
 
     public ViewPagerIndicator(Context context) {
         this(context, null);
@@ -54,11 +59,56 @@ public class ViewPagerIndicator extends View {
         mSpace = dip2px(mContext, 10);
     }
 
-    public void setTitles(List<String> titles) {
-        mTitles = titles;
+    public void setupViewpager(ViewPager viewPager) {
+        PagerAdapter adapter = viewPager.getAdapter();
+        if (adapter == null) {
+            return;
+        }
+        mTitles = new ArrayList<>();
+        for (int i = 0; i < adapter.getCount(); i++) {
+            mTitles.add(String.valueOf(adapter.getPageTitle(i)));
+        }
         calculatePosition();
 
         invalidate();
+
+        final float[] last = {0};
+
+        viewPager.addOnPageChangeListener(new ViewPager.OnPageChangeListener() {
+            @Override
+            public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {
+                if (positionOffset > 0 && positionOffset > last[0]) {
+                    //向左滑动
+                    Log.d("ViewPagerIndicator", "向左滑动");
+                    float leftStart = mPositions[mCurrentPosition];
+                    float leftEnd = mPositions[mCurrentPosition + 1];
+                    float rightStart = leftStart + mTextWidths[mCurrentPosition];
+                    float rightEnd = leftEnd + mTextWidths[mCurrentPosition + 1];
+                    mCurrentLeft = leftStart + (leftEnd - leftStart) * positionOffset;
+                    mCurrentRight = rightStart + (rightEnd - rightStart) * positionOffset;
+                } else if (positionOffset > 0 && positionOffset < last[0]) {
+                    //向右滑动
+                    Log.d("ViewPagerIndicator", "向右滑动");
+                    float leftStart = mPositions[mCurrentPosition];
+                    float leftEnd = mPositions[mCurrentPosition - 1];
+                    float rightStart = leftStart + mTextWidths[mCurrentPosition];
+                    float rightEnd = leftEnd + mTextWidths[mCurrentPosition - 1];
+                    mCurrentLeft = leftStart + (leftEnd - leftStart) * (1 - positionOffset);
+                    mCurrentRight = rightStart + (rightEnd - rightStart) * (1 - positionOffset);
+                }
+                last[0] = positionOffset;
+                invalidate();
+            }
+
+            @Override
+            public void onPageSelected(int position) {
+                mCurrentPosition = position;
+            }
+
+            @Override
+            public void onPageScrollStateChanged(int state) {
+            }
+        });
     }
 
     @Override
@@ -99,7 +149,7 @@ public class ViewPagerIndicator extends View {
 
         //绘制选中部分
         canvas.save();
-        canvas.clipRect(150, 0, 300, mHeight);
+        canvas.clipRect(mCurrentLeft, 0, mCurrentRight, mHeight);
         mTextPaint.setColor(mSelectColor);
         for (int i = 0; i < mTitles.size(); i++) {
             canvas.drawText(mTitles.get(i), mPositions[i], mTextY, mTextPaint);
